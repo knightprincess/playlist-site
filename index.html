@@ -1,0 +1,404 @@
+<!--
+  playlist-lyrics-video.html
+  Single-file responsive webpage that shows a centered container with:
+  - left: lyrics box (scrollable inside)
+  - right: embedded YouTube video
+  - controls under the container: play, pause, prev, next, toggle lyrics, toggle loop
+
+  Replace the `playlist` array in the script with your own videos (YouTube IDs) and lyrics.
+  Drop this file into a new GitHub repo and enable GitHub Pages (or push to `gh-pages`) to host it publicly.
+-->
+
+<!doctype html>
+<html lang="es">
+<head>
+  <!-- Meta tags for responsive behavior and correct encoding -->
+  <meta charset="utf-8"> <!-- Codificación UTF-8 para caracteres en español -->
+  <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- Hace que la página sea responsive en móviles -->
+  <title>Playlist con Letras y Video</title> <!-- Título de la pestaña del navegador -->
+
+  <!-- Simple CSS reset y estilos responsivos -->
+  <style>
+    /* BODY: fondo neutro y centrado del contenido */
+    html, body { height: 100%; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial; /* Tipografías modernas */
+      background: linear-gradient(180deg, #0f172a 0%, #071129 100%); /* Fondo suave y elegante */
+      color: #f8fafc; /* Texto claro */
+      display: flex; /* Usamos flexbox para centrar vertical/horizontal */
+      align-items: center; /* Centra verticalmente */
+      justify-content: center; /* Centra horizontalmente */
+      padding: 24px; /* Espacio en móviles */
+      box-sizing: border-box;
+    }
+
+    /* CONTENEDOR PRINCIPAL: caja centrada que contiene las dos columnas */
+    .player-shell {
+      width: 100%; /* ocupa todo el ancho posible hasta el max-width */
+      max-width: 1100px; /* limita el ancho máximo en pantallas grandes */
+      background: rgba(255,255,255,0.03); /* ligero contraste */
+      border-radius: 14px; /* esquinas redondeadas */
+      box-shadow: 0 8px 30px rgba(2,6,23,0.7); /* sombra para elevar la tarjeta */
+      padding: 18px; /* relleno interior */
+      box-sizing: border-box;
+      display: flex; /* flex to place columns side-by-side */
+      flex-direction: column; /* por defecto vertical: video+controls apilados */
+      gap: 12px; /* espacio entre elementos verticales */
+    }
+
+    /* El area que contiene las columnas (letras + video) */
+    .player-main {
+      display: flex; /* side-by-side */
+      gap: 12px; /* espacio entre columnas */
+      align-items: stretch; /* ambas columnas igual altura */
+      width: 100%;
+    }
+
+    /* COLUMNA DE LETRAS */
+    .lyrics-column {
+      flex: 0 0 40%; /* tamaño inicial: 40% del ancho */
+      min-width: 220px; /* no colapsa demasiado */
+      max-width: 480px; /* evita que ocupe demasiado en pantallas anchas */
+      background: rgba(255,255,255,0.02);
+      border-radius: 10px;
+      padding: 12px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      transition: all 240ms ease; /* animación suave al ocultar/mostrar */
+    }
+
+    /* TITULO Y METADATA DENTRO DE LETRAS */
+    .lyrics-header { font-weight: 600; margin-bottom: 8px; }
+    .lyrics-meta { font-size: 13px; opacity: 0.8; margin-bottom: 10px; }
+
+    /* CONTENEDOR INTERNO DE LETRAS: este es el que tendrá scrollbar si el texto es largo */
+    .lyrics-body {
+      overflow-y: auto; /* activa desplazamiento vertical cuando hace falta */
+      padding-right: 6px; /* espacio para evitar que el scrollbar tape el texto */
+    }
+
+    /* COLUMNA DE VIDEO */
+    .video-column {
+      flex: 1 1 60%; /* ocupa el espacio restante */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      background: rgba(0,0,0,0.15);
+      position: relative; /* para posicionar elementos si hace falta */
+    }
+
+    /* El contenedor que mantiene la relación de aspecto 16:9 del video */
+    .video-wrapper {
+      width: 100%;
+      max-width: 820px; /* no crece infinitamente */
+      aspect-ratio: 16 / 9; /* mantiene 16:9 en navegadores modernos */
+      background: black;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    /* IFRAME que contiene el embed (YouTube) */
+    iframe, video {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+    }
+
+    /* CONTROLES ABAJO: agrupados horizontalmente */
+    .controls {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap; /* se envuelven en pantallas pequeñas */
+    }
+
+    /* BOTONES: estilo simple, grande y táctil */
+    button.control-btn {
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      border: 1px solid rgba(255,255,255,0.06);
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      min-width: 48px;
+      box-shadow: 0 4px 12px rgba(2,6,23,0.6);
+    }
+
+    button.control-btn.small { padding: 8px 10px; min-width: 40px; font-size: 14px }
+
+    /* ESTADO DE BOTON ACTIVO para loop */
+    button.active { outline: 2px solid rgba(99,102,241,0.35); box-shadow: 0 6px 20px rgba(99,102,241,0.08); }
+
+    /* Responsive: en pantallas angostas apilar letras sobre video */
+    @media (max-width: 860px) {
+      .player-main { flex-direction: column; }
+      .lyrics-column { order: 2; width: 100%; max-width: none; flex: 1 1 auto; }
+      .video-column { order: 1; }
+      .video-wrapper { max-width: 100%; }
+    }
+
+    /* Cuando las letras están ocultas aplicamos esta clase para que el video ocupe todo */
+    .no-lyrics .lyrics-column { display: none; }
+    .no-lyrics .video-column { flex: 1 1 100%; }
+
+    /* Pequeños ajustes visuales */
+    .track-title { font-size: 18px; }
+    .track-sub { font-size: 13px; opacity: 0.8; }
+  </style>
+</head>
+<body>
+
+  <!-- ESTRUCTURA PRINCIPAL -->
+  <div id="app" class="player-shell">
+
+    <!-- AREA PRINCIPAL: columnas de letras y video -->
+    <div class="player-main" id="playerMain">
+
+      <!-- COLUMNA IZQUIERDA: LETRAS -->
+      <aside class="lyrics-column" id="lyricsColumn">
+        <div class="lyrics-header">
+          <div class="track-title" id="trackTitle">Título de la canción</div> <!-- Título dinámico -->
+          <div class="lyrics-meta" id="trackMeta">Artista — Álbum</div> <!-- Metadata dinámica -->
+        </div>
+
+        <!-- Contenedor que tendrá scrollbar interno si las letras son largas -->
+        <div class="lyrics-body" id="lyricsBody" aria-live="polite">
+          <pre id="lyricsText" style="white-space: pre-wrap; margin: 0; font-family: inherit;">Aquí aparecerán las letras de la canción seleccionada.</pre>
+        </div>
+
+      </aside>
+
+      <!-- COLUMNA DERECHA: VIDEO EMBED -->
+      <section class="video-column">
+        <div class="video-wrapper" id="videoWrapper">
+          <!-- Iframe de YouTube. Se creará/reemplazará dinámicamente via la API de YouTube -->
+          <div id="player"></div> <!-- div que usará la API para inyectar el iframe -->
+        </div>
+      </section>
+
+    </div><!-- /player-main -->
+
+    <!-- CONTROLES ABAJO -->
+    <div class="controls" role="group" aria-label="controles de reproducción">
+      <button class="control-btn" id="prevBtn" title="Anterior">⟵</button>
+      <button class="control-btn" id="playBtn" title="Reproducir">▶</button>
+      <button class="control-btn" id="pauseBtn" title="Pausa">⏸</button>
+      <button class="control-btn" id="nextBtn" title="Siguiente">⟶</button>
+
+      <button class="control-btn small" id="toggleLyricsBtn" title="Mostrar/Ocultar letras">Letras</button>
+      <button class="control-btn small" id="loopBtn" title="Loop">Loop</button>
+
+      <!-- Pequeña info del track y posición -->
+      <div style="margin-left:12px; font-size:13px; opacity:0.85;" id="positionInfo">0 / 0</div>
+    </div>
+
+  </div> <!-- /app -->
+
+
+  <!-- SCRIPTS: API de YouTube y lógica JS -->
+  <script>
+    /*
+      NOTA: para usar la API de YouTube cargamos la librería asíncronamente.
+      La API creará un objeto `YT` global que nos permite crear un reproductor embebido
+      y controlarlo desde JavaScript.
+    */
+
+    // 1) Definimos una lista de canciones (playlist).
+    // Cada objeto contiene: title, artist, videoId (YouTube), lyrics (texto largo)
+    // Reemplaza estos ejemplos con tus propios videos y letras.
+    const playlist = [
+      {
+        title: 'Canción de Ejemplo 1', // título mostrado
+        artist: 'Artista Ejemplo', // artista/metadata
+        videoId: 'dQw4w9WgXcQ', // id de YouTube - reemplaza con tu propio ID
+        lyrics: `Esta es la letra de la canción de ejemplo 1.\nPuedes pegar letras largas aquí y se mostrará con scroll dentro del contenedor.`
+      },
+      {
+        title: 'Canción de Ejemplo 2',
+        artist: 'Artista B',
+        videoId: '3JZ_D3ELwOQ',
+        lyrics: `Letra de la segunda canción.\nLíneas largas - prueba el scroll.`
+      }
+    ];
+
+    // Índice de la canción actualmente seleccionada
+    let currentIndex = 0;
+    // Referencia al objeto player creado por la API de YT
+    let ytPlayer = null;
+    // Estado de loop: si true, repetimos la misma canción al terminar
+    let isLoop = false;
+
+    // Función auxiliar para actualizar la info visual (título, meta, letras)
+    function renderTrackInfo() {
+      const track = playlist[currentIndex]; // canción actual
+      document.getElementById('trackTitle').textContent = track.title; // set título
+      document.getElementById('trackMeta').textContent = track.artist; // set artista
+      document.getElementById('lyricsText').textContent = track.lyrics; // set letras
+      document.getElementById('positionInfo').textContent = `${currentIndex + 1} / ${playlist.length}`; // posición
+
+      // Ajustamos la altura del contenedor de letras para que iguale la altura del video
+      // Esto mantiene ambos lados exactamente del mismo largo
+      requestAnimationFrame(syncLyricsHeight);
+    }
+
+    // Crea o carga el video actual en el reproductor de YouTube
+    function loadVideoByIndex(index) {
+      currentIndex = (index + playlist.length) % playlist.length; // seguridad para indices negativos
+      const id = playlist[currentIndex].videoId;
+
+      // Si el reproductor ya existe, pedimos que cargue el nuevo video
+      if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
+        ytPlayer.loadVideoById(id);
+      } else {
+        // Si no existe aún, la API llamará a onYouTubeIframeAPIReady y creará el player
+        createPlayer(id);
+      }
+      renderTrackInfo();
+    }
+
+    // NEXT y PREV
+    function nextTrack() { loadVideoByIndex(currentIndex + 1); }
+    function prevTrack() { loadVideoByIndex(currentIndex - 1); }
+
+    // PLAY / PAUSE: utilizamos métodos de la API de YT
+    function playVideo() { if (ytPlayer && typeof ytPlayer.playVideo === 'function') ytPlayer.playVideo(); }
+    function pauseVideo() { if (ytPlayer && typeof ytPlayer.pauseVideo === 'function') ytPlayer.pauseVideo(); }
+
+    // TOGGLE LETRAS: muestra/oculta la columna de letras
+    function toggleLyrics() {
+      const app = document.getElementById('app');
+      app.classList.toggle('no-lyrics'); // la clase CSS controla si se ocultan o no
+      // Luego de cambiar la visibilidad, reajustamos la altura si las letras están visibles
+      requestAnimationFrame(syncLyricsHeight);
+    }
+
+    // TOGGLE LOOP: alterna el estado y actualiza el botón visualmente
+    function toggleLoop() {
+      isLoop = !isLoop;
+      document.getElementById('loopBtn').classList.toggle('active', isLoop);
+    }
+
+    // Sincroniza la altura del contenedor de letras con la altura del video wrapper
+    function syncLyricsHeight() {
+      const wrapper = document.getElementById('videoWrapper');
+      const lyricsBody = document.getElementById('lyricsBody');
+      const lyricsColumn = document.getElementById('lyricsColumn');
+      if (!wrapper || !lyricsBody || !lyricsColumn) return;
+
+      // Si las letras están ocultas, no hacemos nada
+      if (document.getElementById('app').classList.contains('no-lyrics')) {
+        lyricsBody.style.height = '0px';
+        return;
+      }
+
+      // Calculamos la altura disponible dentro de la columna: wrapper height menos header/margins
+      const header = document.querySelector('.lyrics-header');
+      const headerHeight = header ? header.getBoundingClientRect().height : 0;
+      const wrapperHeight = wrapper.getBoundingClientRect().height;
+      const available = wrapperHeight - 8; // un pequeño padding
+
+      // Ajustamos altura del body para que el total de la columna coincida con la altura del wrapper
+      // Sum: headerHeight + lyricsBodyHeight ~= wrapperHeight => lyricsBodyHeight = available - headerHeight
+      const lyricsBodyHeight = Math.max(120, available - headerHeight); // al menos 120px
+      lyricsBody.style.height = lyricsBodyHeight + 'px';
+    }
+
+    /* ---------- YouTube IFrame API ---------- */
+    // Cargamos el script de la API de YouTube dinamicamente
+    (function loadYouTubeAPI() {
+      const tag = document.createElement('script');
+      tag.src = "https://www.youtube.com/iframe_api"; // URL de la API
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag); // insertamos antes del primer script
+    })();
+
+    // Esta función es llamada por la API cuando esté lista
+    function onYouTubeIframeAPIReady() {
+      // Si el usuario ya eligió un video, lo cargamos, sino iniciamos con el primero
+      const id = playlist[currentIndex] ? playlist[currentIndex].videoId : playlist[0].videoId;
+      createPlayer(id);
+      renderTrackInfo();
+    }
+
+    // Crea el reproductor YouTube dentro del div #player
+    function createPlayer(videoId) {
+      ytPlayer = new YT.Player('player', {
+        height: '100%', // ocupa el contenedor
+        width: '100%',
+        videoId: videoId, // video a reproducir
+        playerVars: {
+          controls: 1, // muestra controles nativos de YouTube
+          rel: 0, // no mostrar videos relacionados al final (comportamiento sujeto a cambios de yt)
+          modestbranding: 1, // menos branding
+          iv_load_policy: 3 // oculta anotaciones
+        },
+        events: {
+          'onReady': onPlayerReady, // evento cuando el player está listo
+          'onStateChange': onPlayerStateChange // responde a cambios de estado (play, pause, end...)
+        }
+      });
+    }
+
+    // Evento: player listo
+    function onPlayerReady(event) {
+      // Ajustamos la altura de lyrics para que coincida con el video
+      requestAnimationFrame(syncLyricsHeight);
+    }
+
+    // Evento: estado del reproductor cambió
+    function onPlayerStateChange(event) {
+      // Cuando el video termina (YT.PlayerState.ENDED === 0)
+      if (event.data === YT.PlayerState.ENDED) {
+        if (isLoop) {
+          // Si está en loop, reproducimos la misma pista otra vez
+          ytPlayer.playVideo();
+        } else {
+          // Si no, avanzamos a la siguiente pista
+          nextTrack();
+        }
+      }
+    }
+
+    /* ---------- Conexión de botones con funciones ---------- */
+    // Listener para botones
+    document.getElementById('playBtn').addEventListener('click', playVideo);
+    document.getElementById('pauseBtn').addEventListener('click', pauseVideo);
+    document.getElementById('nextBtn').addEventListener('click', nextTrack);
+    document.getElementById('prevBtn').addEventListener('click', prevTrack);
+    document.getElementById('toggleLyricsBtn').addEventListener('click', toggleLyrics);
+    document.getElementById('loopBtn').addEventListener('click', toggleLoop);
+
+    // Cuando la ventana cambia de tamaño reajustamos las alturas
+    window.addEventListener('resize', function () { requestAnimationFrame(syncLyricsHeight); });
+
+    // Al cargar la página cargamos la primera pista
+    window.addEventListener('load', function () {
+      renderTrackInfo(); // llena textos
+      // No intentamos reproducir automáticamente por las políticas de autoplay de navegadores
+      // Carga el primer video en el reproductor si la API ya está cargada
+      if (window.YT && YT.Player) {
+        loadVideoByIndex(currentIndex);
+      }
+    });
+
+    // Seguridad: si el usuario hace click en una letra (por ejemplo), evitamos que la selección rompa el layout
+    document.getElementById('lyricsBody').addEventListener('click', function () { /* espacio para futuras interacciones */ });
+
+    // Función para que el usuario pueda actualizar la playlist desde la consola (útil al probar)
+    window.setPlaylist = function (newList) {
+      if (!Array.isArray(newList)) return console.error('La playlist debe ser un array');
+      playlist.length = 0; // limpiar
+      newList.forEach(item => playlist.push(item));
+      currentIndex = 0;
+      loadVideoByIndex(0);
+    };
+
+  </script>
+
+</body>
+</html>
